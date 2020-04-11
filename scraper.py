@@ -2,12 +2,10 @@ import requests
 from bs4 import BeautifulSoup as bs
 import math
 import csv
-import threading
 import multiprocessing
 import time
-
-
-# print(multiprocessing.cpu_count())
+import threading
+import os
 
 
 def get_divided_array(prod_links: [], threads: int):
@@ -23,6 +21,15 @@ def get_divided_array(prod_links: [], threads: int):
 
 
 class Scraper:
+    selected_category = None
+
+    def __init__(self, category: str):
+        self.selected_category = category
+        self.check_links_file()
+
+    def check_links_file(self):
+        print('scraper', self.selected_category)
+        # if os.path.isfile('')
 
     @staticmethod
     def get_links_from_site(url: str):
@@ -178,27 +185,6 @@ class Scraper:
             self.save_book_properties_to_file('products.csv', book)
 
 
-def main():
-    scraper_init = Scraper()
-
-    links_list = scraper_init.get_links_from_file('products_links.csv')
-    divided_list = get_divided_array(links_list, 4)
-
-    scraper_1 = Scraper()
-    scraper_2 = Scraper()
-    scraper_3 = Scraper()
-    scraper_4 = Scraper()
-
-    thread_1 = threading.Thread(target=scraper_1.scrap, args={divided_list[0], })
-    thread_2 = threading.Thread(target=scraper_2.scrap, args={divided_list[1], })
-    thread_3 = threading.Thread(target=scraper_3.scrap, args={divided_list[2], })
-    thread_4 = threading.Thread(target=scraper_4.scrap, args={divided_list[3], })
-
-    thread_1.start()
-    thread_2.start()
-    thread_3.start()
-    thread_4.start()
-
-
-# run main
-# main()
+# main
+def run_scraper(category: str):
+    Scraper(category)
