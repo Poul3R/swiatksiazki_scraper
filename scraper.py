@@ -20,16 +20,38 @@ def get_divided_array(prod_links: [], threads: int):
     return out
 
 
+def get_main_page_soup(self, url: str):
+    """
+    Return BeautifulSoup object of web page
+    :param url:
+    :return:
+    """
+    page = requests.get(url)
+    page_txt = page.text
+    soup = bs(page_txt, "html.parser")
+
+    return soup
+
+
 class Scraper:
-    selected_category = None
+    category_main_page_url = None
 
-    def __init__(self, category: str):
-        self.selected_category = category
-        self.check_links_file()
+    def __init__(self, url: str):
+        self.category_main_page_url = url
 
-    def check_links_file(self):
-        print('scraper', self.selected_category)
-        # if os.path.isfile('')
+    def get_products_amount(self):
+        soup = get_main_page_soup(self.category_main_page_url)
+
+
+    def links_file_exist(self, file_name: str):
+        """
+        CHeck if file with links to scrap exist
+        :return: Boolean
+        """
+        if os.path.isfile(file_name):
+            return True
+        else:
+            return False
 
     @staticmethod
     def get_links_from_site(url: str):
@@ -186,5 +208,18 @@ class Scraper:
 
 
 # main
-def run_scraper(category: str):
-    Scraper(category)
+# def run_scraper(category: str):
+#     Scraper(category)
+
+scraper = Scraper('s')
+scraper.links_file_exist()
+
+# https://www.swiatksiazki.pl/Ksiazki/biznes-1765.html
+
+
+# 1. Sprawdz ile jest produktów w danej kategorii
+# 2. Sprawdz czy plik z linkami istnieje
+# 2.1 jesli istnieje to sprawdz czy ma przynajmniej 60% liczby wszystkich
+# 2.1.1 Jeśli tak - zbieraj dane
+# 2.1.2 Jeśli nie - zbierz linki od nowa
+# 2.2 Jesli nie istnieje to stwórz plik i zbierz linki
