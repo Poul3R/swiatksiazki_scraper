@@ -1,3 +1,5 @@
+import sys
+
 import requests
 from bs4 import BeautifulSoup as bs
 import math
@@ -7,7 +9,9 @@ import time
 import threading
 import os
 from random import randrange
-from datasets import categories
+from datasets import categories, notifications
+from gui import Gui
+from utils import log_to_file
 
 
 def get_divided_array(prod_links: [], threads: int):
@@ -52,11 +56,18 @@ class Scraper:
     category_main_page_url = None
     category_scrap_url = None
     category_name = None
+    gui = None
+    thread_scraper = None
 
-    def __init__(self, category: str):
-        self.category_name = category
-        self.category_main_page_url = categories[category]['main_url']
-        self.category_scrap_url = categories[category]['scrap_url']
+    def __init__(self, category: str, gui: Gui):
+        try:
+            self.category_name = category
+            self.category_main_page_url = categories[category]['main_url']
+            self.category_scrap_url = categories[category]['scrap_url']
+            self.gui - gui
+        except BaseException as e:
+            log_to_file(str(e))
+            sys.exit()
 
     def get_products_amount(self):
         """
@@ -68,6 +79,7 @@ class Scraper:
         toolbar_amount = soup.find('p', {'id': 'toolbar-amount'}).find_all('span', class_='toolbar-number')
         products_amount = int(toolbar_amount[-1].text)
 
+        self.gui.push_log_status(notifications['amount_of_products'] % (self.category_name, str(products_amount)))
         return products_amount
 
     def links_file_exist(self):
@@ -109,7 +121,6 @@ class Scraper:
 
         for a in a_list:
             try:
-                # print(a['href'])
                 link_list.append(a['href'])
             except BaseException as e:
                 pass
@@ -192,10 +203,6 @@ class Scraper:
         # print(price)
 
         return [title, author, category, cover, publisher, pages, release, price]
-        # return {'title': title, 'author': author,
-        #         'category': category, 'publisher': publisher,
-        #         'pages': pages, 'release': release,
-        #         'price': price, 'cover': cover}
 
     def get_links_from_file(self):
         """
@@ -234,6 +241,7 @@ class Scraper:
 
         # check if empty or incomplete fie exist and remove it ( to create new one )
         if self.links_file_exist():
+            self.gui.push_log_status(notifications['links_file_deleted'] % (self.category_name))
             os.remove(self.category_name + '_links.csv')
 
         all_products_links = []
@@ -258,6 +266,8 @@ class Scraper:
                 writer = csv.writer(file)
                 writer.writerow([link])
 
+        self.gui.push_log_status(notifications['links_file_created'])
+
     def scrap_books(self):
         """
         (Run scraping process)
@@ -267,33 +277,44 @@ class Scraper:
 
         # Remove old books-data file if exist
         if os.path.isfile(self.category_name + '_books.csv'):
+            self.gui.push_log_status(notifications['books_file_deleted'] % (self.category_name))
             os.remove(self.category_name + '_books.csv')
 
         list_of_links = self.get_links_from_file()
 
+        counter = 0
+        self.gui.push_log_status(notifications['books_file_added'] % (self.category_name))
         for link in list_of_links:
             book_data = self.get_book_properties(link)
             self.save_book_properties_to_file(book_data)
+
+            counter += 1
+            if link % 50 == 0:
+                self.gui.push_log_status(
+                    notifications['scraped_amount_notification'] % (str(counter), str(len(list_of_links))))
+
             make_random_pause()
+
+        self.gui.push_log_status(notifications['scraper_work_finished'])
+        log_to_file('Scraping finished')
 
     def run_scraper(self):
         """
         Main Scraper function that prepare environment and run scraper process
         :return:
         """
+
+        self.gui.push_log_status(notifications['scraper_work_started'])
+        self.thread_scraper = threading.Thread(target=self.scrap_books())
+
         if self.links_file_exist():
             amount_of_product_in_store = self.get_products_amount()
 
             if self.links_file_is_complete(amount_of_product_in_store):
-                self.scrap_books()
+                self.thread_scraper.start()
             else:
                 self.make_links_file()
-                self.scrap_books()
+                self.thread_scraper.start()
         else:
             self.make_links_file()
-            self.scrap_books()
-
-
-# main
-
-
+            self.thread_scraper.start()
