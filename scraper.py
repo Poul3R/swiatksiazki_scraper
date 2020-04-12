@@ -6,6 +6,8 @@ import multiprocessing
 import time
 import threading
 import os
+from random import randrange
+from datasets import categories
 
 
 def get_divided_array(prod_links: [], threads: int):
@@ -20,7 +22,7 @@ def get_divided_array(prod_links: [], threads: int):
     return out
 
 
-def get_main_page_soup(self, url: str):
+def get_page_soup(url: str):
     """
     Return BeautifulSoup object of web page
     :param url:
@@ -33,31 +35,74 @@ def get_main_page_soup(self, url: str):
     return soup
 
 
+def make_random_pause():
+    random = randrange(1, 11)
+
+    if random in [6, 7]:
+        time.sleep(1)
+    elif random in [8, 9]:
+        time.sleep(2)
+    elif random == 10:
+        time.sleep(6)
+    else:
+        return
+
+
 class Scraper:
     category_main_page_url = None
+    category_scrap_url = None
+    category_name = None
 
-    def __init__(self, url: str):
-        self.category_main_page_url = url
+    def __init__(self, category: str):
+        self.category_name = category
+        self.category_main_page_url = categories[category]['main_url']
+        self.category_scrap_url = categories[category]['scrap_url']
 
     def get_products_amount(self):
-        soup = get_main_page_soup(self.category_main_page_url)
-
-
-    def links_file_exist(self, file_name: str):
         """
-        CHeck if file with links to scrap exist
+        Return amount of product from category based on info scraped from main category site
+        :return: Integer
+        """
+        soup = get_page_soup(self.category_main_page_url)
+
+        toolbar_amount = soup.find('p', {'id': 'toolbar-amount'}).find_all('span', class_='toolbar-number')
+        products_amount = int(toolbar_amount[-1].text)
+
+        return products_amount
+
+    def links_file_exist(self):
+        """
+        Check if file with links to scrap exist
         :return: Boolean
         """
-        if os.path.isfile(file_name):
+        if os.path.isfile(self.category_name + "_links.csv"):
             return True
         else:
             return False
 
+    def links_file_is_complete(self, products_amount: int):
+        """
+        Check if file contains 60% or more links of all products from category
+        :param products_amount: Integer
+        :return: Boolean
+        """
+        with open(self.category_name + "_links.csv", "r") as links_file:
+            reader = csv.reader(links_file)
+
+            amount_in_file = len(list(reader))
+
+            links_file.close()
+
+            return True if int(amount_in_file) / products_amount >= 0.6 else False
+
     @staticmethod
     def get_links_from_site(url: str):
-        web = requests.get(url)
-        webTxt = web.text
-        soup = bs(webTxt, "html.parser")
+        """
+        Return list of products urls from current subsite
+        :param url: String
+        :return: List of Stings
+        """
+        soup = get_page_soup(url)
 
         a_list = soup.find_all('a', class_='product-item-link')
         link_list = []
@@ -71,28 +116,27 @@ class Scraper:
 
         return link_list
 
-    @staticmethod
-    def get_pages_amount(url: str):
+    def get_pages_amount(self):
         """
-        :param url:
-        :return: int - amount of pages
+        Return amount of all pages from selected category if 50 products are shown on site
+        :return: Integer
         """
-        web = requests.get(url)
-        webTxt = web.text
-        soup = bs(webTxt, "html.parser")
+        soup = get_page_soup(self.category_main_page_url)
 
         toolbar_amount = soup.find('p', {'id': 'toolbar-amount'}).find_all('span', class_='toolbar-number')
         products_amount = int(toolbar_amount[-1].text)
 
         pages = math.ceil(products_amount / 50)
-        return pages
+        return int(pages)
 
     @staticmethod
     def get_book_properties(product_url: str):
-        web = requests.get(product_url)
-        webTxt = web.text
-
-        soup = bs(webTxt, "html.parser")
+        """
+        Return dictionary of book properties
+        :param product_url: String
+        :return: List -> [title, author, category, cover, publisher, pages, release, price]
+        """
+        soup = get_page_soup(product_url)
         product_info_attributes = soup.find('ul', class_='product-info-attributes')
         x = product_info_attributes.find_all('li')
 
@@ -148,41 +192,19 @@ class Scraper:
         # print(price)
 
         return [title, author, category, cover, publisher, pages, release, price]
+        # return {'title': title, 'author': author,
+        #         'category': category, 'publisher': publisher,
+        #         'pages': pages, 'release': release,
+        #         'price': price, 'cover': cover}
 
-    def make_links_file(self, url: str):
+    def get_links_from_file(self):
         """
-        Prepare csv file with all products urls which should be scraped.
-        [important] Limit of product on url should be set as 50 otherwise some product could be skipped.
-        :param url: Url of page where scraper should start its work
-        :return: void
+        Return list of links from links-file
+        :return: List of Stings
         """
-
-        all_products_links = []
-
-        pages_amount = self.get_pages_amount(url)
-
-        for i in range(pages_amount):
-            new_url = 'https://www.swiatksiazki.pl/Ksiazki/biznes-1765.html?p=%s&product_list_limit=50' % (i + 1)
-
-            books_links = self.get_links_from_site(new_url)
-
-            all_products_links.extend(books_links)
-
-            i += 1
-
-            if i > 2:
-                break
-
-        for link in all_products_links:
-            with open('products_links.csv', 'a', newline='') as file:
-                writter = csv.writer(file)
-                writter.writerow([link])
-
-    @staticmethod
-    def get_links_from_file(file_name: str):
         links = []
 
-        with open(file_name) as file:
+        with open(self.category_name + "_links.csv") as file:
             reader = csv.reader(file)
 
             for row in reader:
@@ -192,34 +214,87 @@ class Scraper:
 
         return links
 
-    @staticmethod
-    def save_book_properties_to_file(file_name: str, data):
-        with open(file_name, 'a', encoding="utf-8", newline='') as file:
-            writer = csv.writer(file, delimiter=',', )
+    def save_book_properties_to_file(self, data):
+        """
+        Save received book data to file
+        :param data:
+        :return: void
+        """
+        with open(self.category_name + '_books.csv', 'a', encoding="utf-8", newline='') as file:
+            writer = csv.writer(file, delimiter=',')
 
             writer.writerow(data)
 
-    def scrap(self, links: []):
+    def make_links_file(self):
+        """
+        Prepare csv file with all products urls which should be scraped.
+        [important] Limit of product on url should be set as 50 otherwise some product could be skipped.
+        :return: void
+        """
 
-        for link in links:
-            book = self.get_book_properties(link)
+        # check if empty or incomplete fie exist and remove it ( to create new one )
+        if self.links_file_exist():
+            os.remove(self.category_name + '_links.csv')
 
-            self.save_book_properties_to_file('products.csv', book)
+        all_products_links = []
+
+        pages_amount = self.get_pages_amount()
+
+        for i in range(pages_amount):
+            new_url = self.category_scrap_url % (i + 1)
+
+            books_links = self.get_links_from_site(new_url)
+
+            all_products_links.extend(books_links)
+
+            i += 1
+
+            # todo:: remove test break
+            if i > 2:
+                break
+
+        for link in all_products_links:
+            with open(self.category_name + '_links.csv', 'a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([link])
+
+    def scrap_books(self):
+        """
+        (Run scraping process)
+        Get list of links and call scraper's method for all of them, next save scraped data to file
+        :return: void
+        """
+
+        # Remove old books-data file if exist
+        if os.path.isfile(self.category_name + '_books.csv'):
+            os.remove(self.category_name + '_books.csv')
+
+        list_of_links = self.get_links_from_file()
+
+        for link in list_of_links:
+            book_data = self.get_book_properties(link)
+            self.save_book_properties_to_file(book_data)
+            make_random_pause()
+
+    def run_scraper(self):
+        """
+        Main Scraper function that prepare environment and run scraper process
+        :return:
+        """
+        if self.links_file_exist():
+            amount_of_product_in_store = self.get_products_amount()
+
+            if self.links_file_is_complete(amount_of_product_in_store):
+                self.scrap_books()
+            else:
+                self.make_links_file()
+                self.scrap_books()
+        else:
+            self.make_links_file()
+            self.scrap_books()
 
 
 # main
-# def run_scraper(category: str):
-#     Scraper(category)
+scraper = Scraper('biznes')
+scraper.run_scraper()
 
-scraper = Scraper('s')
-scraper.links_file_exist()
-
-# https://www.swiatksiazki.pl/Ksiazki/biznes-1765.html
-
-
-# 1. Sprawdz ile jest produktów w danej kategorii
-# 2. Sprawdz czy plik z linkami istnieje
-# 2.1 jesli istnieje to sprawdz czy ma przynajmniej 60% liczby wszystkich
-# 2.1.1 Jeśli tak - zbieraj dane
-# 2.1.2 Jeśli nie - zbierz linki od nowa
-# 2.2 Jesli nie istnieje to stwórz plik i zbierz linki
