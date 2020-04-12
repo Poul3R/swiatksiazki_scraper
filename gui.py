@@ -1,8 +1,6 @@
 from tkinter import *
 from datasets import categories
-from scraper import run_scraper
-
-__selected_category: str = ''
+from scraper import Scraper
 
 
 class NavigationPage(Tk):
@@ -12,16 +10,16 @@ class NavigationPage(Tk):
         self.geometry("500x500")
         self.title = "Świat Książki - Scraper"
 
-        container = Frame(self)
-        container.pack(side="top", fill="both", expand=True)
-        container.grid_rowconfigure(0, weight=1)
-        container.grid_columnconfigure(0, weight=0)
+        root = Frame(self)
+        root.pack(side="top", fill="both", expand=True)
+        root.grid_rowconfigure(0, weight=1)
+        root.grid_columnconfigure(0, weight=0)
 
         self.frames = {}
 
         for F in (StartPage, WorkingPage):
             page_name = F.__name__
-            frame = F(parent=container, controller=self)
+            frame = F(parent=root, controller=self)
             self.frames[page_name] = frame
 
             frame.grid(row=0, column=0, sticky="nsew")
@@ -58,7 +56,6 @@ class StartPage(Frame):
 
     def go_to_working_page(self):
         if self.selected_category.get() in categories.keys():
-            __selected_category = self.selected_category.get()
             self.controller.show_frame("WorkingPage")
         else:
             self.info_lbl['text'] = 'Musisz wybrać kategorię'
@@ -73,14 +70,16 @@ class WorkingPage(Frame):
 
     def create_widgets(self):
         # self.button = Button(self, text="Go to the start page", command=lambda: self.controller.show_frame("StartPage"))
-        self.start_scrap_btn = Button(self, text="Go to the start page", command=lambda: self.controller.show_frame("StartPage"))
+        self.start_scrap_btn = Button(self, text="Go to the start page",
+                                      command=lambda: self.controller.show_frame("StartPage"))
 
         self.start_scrap_btn.grid()
 
-
     def start_scraping(self):
-        cat = __selected_category
-        run_scraper()
+        cat = self.selected_category.get()
+        scraper = Scraper(cat)
+        scraper.run_scraper()
+
 
 # main
 def run_gui():

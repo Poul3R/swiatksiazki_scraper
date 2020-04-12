@@ -295,6 +295,5 @@ class Scraper:
 
 
 # main
-scraper = Scraper('biznes')
-scraper.run_scraper()
+
 
