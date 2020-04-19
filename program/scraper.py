@@ -1,17 +1,12 @@
-import sys
-
 import requests
 from bs4 import BeautifulSoup as bs
 import math
 import csv
-import multiprocessing
 import time
 import threading
 import os
 from random import randrange
-from datasets import categories, notifications
-from gui import Gui
-from utils import log_to_file
+from program import datasets, utils
 
 
 def get_divided_array(prod_links: [], threads: int):
@@ -40,14 +35,12 @@ def get_page_soup(url: str):
 
 
 def make_random_pause():
-    random = randrange(1, 11)
+    random = randrange(1, 13)
 
-    if random in [6, 7]:
-        time.sleep(1)
-    elif random in [8, 9]:
+    if random in [8, 9]:
         time.sleep(2)
     elif random == 10:
-        time.sleep(6)
+        time.sleep(4)
     else:
         return
 
@@ -57,17 +50,20 @@ class Scraper:
     category_scrap_url = None
     category_name = None
     gui = None
-    thread_scraper = None
+    thread_scrap_books = None
 
-    def __init__(self, category: str, gui: Gui):
+    def __init__(self, category: str, gui):
         try:
             self.category_name = category
-            self.category_main_page_url = categories[category]['main_url']
-            self.category_scrap_url = categories[category]['scrap_url']
-            self.gui - gui
-        except BaseException as e:
-            log_to_file(str(e))
-            sys.exit()
+            self.category_main_page_url = datasets.categories[category]['main_url']
+            self.category_scrap_url = self.category_main_page_url + '?p=%s&product_list_limit=50'
+            self.gui = gui
+            self.thread_scrap_books = threading.Thread(target=self.scrap_books, name='thread_scrap_books')
+
+        except BaseException as error:
+            utils.log_to_file('Scraper init -> ' + str(error))
+            utils.send_log_email()
+            gui.push_log_status(datasets.notifications['scraper_crashed'])
 
     def get_products_amount(self):
         """
@@ -79,7 +75,8 @@ class Scraper:
         toolbar_amount = soup.find('p', {'id': 'toolbar-amount'}).find_all('span', class_='toolbar-number')
         products_amount = int(toolbar_amount[-1].text)
 
-        self.gui.push_log_status(notifications['amount_of_products'] % (self.category_name, str(products_amount)))
+        self.gui.push_log_status(
+            datasets.notifications['amount_of_products'] % (self.category_name, str(products_amount)))
         return products_amount
 
     def links_file_exist(self):
@@ -153,14 +150,14 @@ class Scraper:
 
         title = soup.find('span', attrs={'data-ui-id': 'page-title-wrapper', 'itemprop': 'name'}).text
         author = ''
-        category = []
+        category = ''
         cover = ''
         publisher = ''
         pages = ''
         release = ''
 
         price = soup.find('span', class_='price').text
-        # price = soup.find('span', class_='price-wrapper').has_attr('data-price-amount').text
+        price = price.replace('\xa0zł', '').replace(',', '.')
 
         for item in x:
             li = item
@@ -170,12 +167,12 @@ class Scraper:
                 span.decompose()
                 author = li.text.strip()
 
-            if 'tegor' in str(span.text).lower():
+            if 'kategorie' in str(span.text).lower():
                 span.decompose()
                 linkList = li.find_all('a')
 
                 for cat in linkList:
-                    category.append(cat.text)
+                    category += (cat.text + "; ")
 
             if 'typ okładki' in str(span.text).lower():
                 span.decompose()
@@ -193,16 +190,11 @@ class Scraper:
                 span.decompose()
                 release = li.text.strip()[0:10]
 
-        # print(title)
-        # print(author)
-        # print(category)
-        # print(cover)
-        # print(publisher)
-        # print(pages)
-        # print(release)
-        # print(price)
+        # print(title, author, category, cover,
+        #       publisher, pages, release, price)
 
-        return [title, author, category, cover, publisher, pages, release, price]
+        return [title, author, category, cover,
+                publisher, pages, release, price]
 
     def get_links_from_file(self):
         """
@@ -227,7 +219,7 @@ class Scraper:
         :param data:
         :return: void
         """
-        with open(self.category_name + '_books.csv', 'a', encoding="utf-8", newline='') as file:
+        with open(self.category_name + '_books.csv', 'a', newline='', encoding='utf-8') as file:
             writer = csv.writer(file, delimiter=',')
 
             writer.writerow(data)
@@ -241,7 +233,7 @@ class Scraper:
 
         # check if empty or incomplete fie exist and remove it ( to create new one )
         if self.links_file_exist():
-            self.gui.push_log_status(notifications['links_file_deleted'] % (self.category_name))
+            self.gui.push_log_status(datasets.notifications['links_file_deleted'] % (self.category_name))
             os.remove(self.category_name + '_links.csv')
 
         all_products_links = []
@@ -258,7 +250,7 @@ class Scraper:
             i += 1
 
             # todo:: remove test break
-            if i > 2:
+            if i > 1:
                 break
 
         for link in all_products_links:
@@ -266,7 +258,7 @@ class Scraper:
                 writer = csv.writer(file)
                 writer.writerow([link])
 
-        self.gui.push_log_status(notifications['links_file_created'])
+        self.gui.push_log_status(datasets.notifications['links_file_created'])
 
     def scrap_books(self):
         """
@@ -274,47 +266,63 @@ class Scraper:
         Get list of links and call scraper's method for all of them, next save scraped data to file
         :return: void
         """
+        self.gui.push_log_status(datasets.notifications['scraper_work_prepare'])
+
+        # Disable 'rub button' to prevent rerun scraper thread
+        self.gui.run_btn['state'] = 'disabled'
 
         # Remove old books-data file if exist
         if os.path.isfile(self.category_name + '_books.csv'):
-            self.gui.push_log_status(notifications['books_file_deleted'] % (self.category_name))
+            self.gui.push_log_status(datasets.notifications['books_file_deleted'] % (self.category_name))
             os.remove(self.category_name + '_books.csv')
 
         list_of_links = self.get_links_from_file()
 
         counter = 0
-        self.gui.push_log_status(notifications['books_file_added'] % (self.category_name))
+        self.gui.push_log_status(datasets.notifications['books_file_added'] % (self.category_name))
         for link in list_of_links:
             book_data = self.get_book_properties(link)
             self.save_book_properties_to_file(book_data)
 
             counter += 1
-            if link % 50 == 0:
+            if counter % 20 == 0:
                 self.gui.push_log_status(
-                    notifications['scraped_amount_notification'] % (str(counter), str(len(list_of_links))))
+                    datasets.notifications['scraped_amount_notification'] % (str(counter), str(len(list_of_links))))
 
             make_random_pause()
 
-        self.gui.push_log_status(notifications['scraper_work_finished'])
-        log_to_file('Scraping finished')
+        utils.log_to_file('Scraping finished')
+        utils.send_log_email()
 
-    def run_scraper(self):
+        if self.gui.turn_comp_off.get():
+            self.gui.push_log_status(datasets.notifications['scraper_work_finished_off'])
+            utils.turn_computer_off()
+        else:
+            self.gui.push_log_status(datasets.notifications['scraper_work_finished'])
+
+    def main(self):
         """
         Main Scraper function that prepare environment and run scraper process
         :return:
         """
 
-        self.gui.push_log_status(notifications['scraper_work_started'])
-        self.thread_scraper = threading.Thread(target=self.scrap_books())
-
+        self.gui.push_log_status(datasets.notifications['scraper_work_prepare'])
         if self.links_file_exist():
             amount_of_product_in_store = self.get_products_amount()
 
             if self.links_file_is_complete(amount_of_product_in_store):
-                self.thread_scraper.start()
+
+                self.thread_scrap_books.start()
             else:
                 self.make_links_file()
-                self.thread_scraper.start()
+
+                self.thread_scrap_books.start()
         else:
             self.make_links_file()
-            self.thread_scraper.start()
+
+            self.thread_scrap_books.start()
+
+
+def run_scraper(category: str, gui):
+    scraper = Scraper(category, gui)
+    scraper.main()

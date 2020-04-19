@@ -1,15 +1,15 @@
 from tkinter import *
-from datasets import categories
-from scraper import Scraper
-from utils import log_to_file
+from program.datasets import categories
+from program.scraper import run_scraper
+from program.utils import log_to_file
 
 
-class Gui():
+class Gui:
     root = None
+    logs_string = ''
 
     def __init__(self):
         self.root = Tk()
-        self.root.geometry("500x500")
         self.root.title = "Świat Książki - Scraper"
 
         self.show_frame('home_frame')
@@ -41,20 +41,27 @@ class Gui():
         working_frame = Frame(self.root)
         working_frame.grid(row=0, column=0, sticky="nsew")
         Label(working_frame, text="Logi programu").grid(row=0, column=0, columnspan=2)
-        self.logs_area = Text(working_frame, width=50, height=10, wrap=WORD)
+        self.logs_area = Text(working_frame, width=90, height=10, wrap=WORD)
         self.logs_area.grid(row=1, column=0, columnspan=2)
 
         # Call scrapper to work
         if self.selected_category:
-            Scraper(str(self.selected_category), self)
+            self.run_btn = Button(working_frame, text='Start',
+                             command=lambda: run_scraper(str(self.selected_category.get()), self))
+            self.run_btn.grid(row=2, sticky=W)
         else:
             log_to_file('Something went wrong with "selected_category"')
-            sys.exit()
+            self.push_log_status('Wystąpił problem z wybraną kategorią. Wyłącz program i spróbuj ponownie')
+
+        self.turn_comp_off = BooleanVar()
+        Checkbutton(
+            working_frame,
+            text='Wyłącz komputer po zakończeniu',
+            variable=self.turn_comp_off).grid(row=3, column=0, sticky=E)
 
         return working_frame
 
     def show_frame(self, frame_name: str):
-        print('show frame called')
         if frame_name == 'working_frame':
             frame = self.get_working_frame()
             frame.tkraise()
@@ -66,6 +73,7 @@ class Gui():
         self.logs_string += (status + "\n")
         self.logs_area.delete(0.0, END)
         self.logs_area.insert(0.0, self.logs_string)
+        self.logs_area.see(END)
 
 
 def run_gui():
