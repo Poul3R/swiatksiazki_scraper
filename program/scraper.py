@@ -77,6 +77,8 @@ class Scraper:
 
         self.gui.push_log_status(
             datasets.notifications['amount_of_products'] % (self.category_name, str(products_amount)))
+
+        print('---------get_products_amount: ' + str(products_amount))
         return products_amount
 
     def links_file_exist(self):
@@ -122,6 +124,7 @@ class Scraper:
             except BaseException as e:
                 pass
 
+        print('---------get_links_from_site: ' + str(len(link_list)))
         return link_list
 
     def get_pages_amount(self):
@@ -135,6 +138,8 @@ class Scraper:
         products_amount = int(toolbar_amount[-1].text)
 
         pages = math.ceil(products_amount / 50)
+
+        print('---------get_pages_amount: ' + str(pages))
         return int(pages)
 
     @staticmethod
@@ -248,10 +253,6 @@ class Scraper:
             all_products_links.extend(books_links)
 
             i += 1
-
-            # todo:: remove test break
-            if i > 1:
-                break
 
         for link in all_products_links:
             with open(self.category_name + '_links.csv', 'a', newline='') as file:
